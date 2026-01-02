@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import BaseModel, Field
+
+from ..config import get_settings
 
 if TYPE_CHECKING:
     from mcp import ClientSession
@@ -18,59 +20,48 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class MCPServerConfig:
+class MCPServerConfig(BaseModel):
     """Configuration for a single MCP server."""
 
-    name: str
-    url: str
-    auth_token: str | None = None
-    transport: Literal["sse", "streamable_http"] | None = None
-    timeout: float = 10.0
+    name: str = Field(..., description="Server identifier")
+    url: str = Field(..., description="Server URL")
+    auth_token: str | None = Field(default=None, description="Bearer token for auth")
+    transport: Literal["sse", "streamable_http"] | None = Field(
+        default=None, description="Transport type"
+    )
+    timeout: float = Field(default=10.0, ge=1.0, description="Request timeout in seconds")
+
+
+class MCPServersFile(BaseModel):
+    """Schema for mcp_servers.json file."""
+
+    servers: list[MCPServerConfig] = Field(default_factory=list)
 
 
 def load_mcp_config() -> list[MCPServerConfig]:
-    """Load MCP server configurations from env vars and optional JSON file.
+    """Load MCP server configurations from settings and optional JSON file.
 
-    n8n is loaded from environment variables (foundational).
+    n8n is loaded from settings/environment variables (foundational).
     Additional MCP servers can be configured in mcp_servers.json.
-
-    Environment variables:
-        N8N_MCP_URL: n8n MCP server URL
-        N8N_MCP_TOKEN: Bearer token for n8n (optional)
-        N8N_MCP_TIMEOUT: Request timeout in seconds (optional, default 10.0)
-
-    JSON file (mcp_servers.json):
-        {
-            "servers": [
-                {
-                    "name": "server_name",
-                    "url": "http://...",
-                    "token": "optional_token",
-                    "transport": "sse" | "streamable_http",
-                    "timeout": 10.0
-                }
-            ]
-        }
 
     Returns:
         List of MCPServerConfig objects
     """
-    servers = []
+    settings = get_settings()
+    servers: list[MCPServerConfig] = []
 
-    # 1. n8n MCP Server from env (foundational)
-    n8n_url = os.environ.get("N8N_MCP_URL")
-    if n8n_url:
+    # 1. n8n MCP Server from settings (foundational)
+    if settings.n8n_mcp_url:
         servers.append(
             MCPServerConfig(
                 name="n8n",
-                url=n8n_url,
-                auth_token=os.environ.get("N8N_MCP_TOKEN"),
+                url=settings.n8n_mcp_url,
+                auth_token=settings.n8n_mcp_token,
                 transport="streamable_http",
-                timeout=float(os.environ.get("N8N_MCP_TIMEOUT", "10.0")),
+                timeout=settings.n8n_mcp_timeout,
             )
         )
-        logger.debug(f"Loaded MCP server config: n8n ({n8n_url})")
+        logger.debug(f"Loaded MCP server config: n8n ({settings.n8n_mcp_url})")
     else:
         logger.info("N8N_MCP_URL not set - n8n MCP tools will not be available")
 
@@ -80,23 +71,10 @@ def load_mcp_config() -> list[MCPServerConfig]:
         try:
             with open(config_path) as f:
                 data = json.load(f)
-                for server in data.get("servers", []):
-                    name = server.get("name")
-                    url = server.get("url")
-                    if not name or not url:
-                        logger.warning(f"Skipping MCP server with missing name or url: {server}")
-                        continue
-
-                    servers.append(
-                        MCPServerConfig(
-                            name=name,
-                            url=url,
-                            auth_token=server.get("token"),
-                            transport=server.get("transport"),
-                            timeout=server.get("timeout", 10.0),
-                        )
-                    )
-                    logger.debug(f"Loaded MCP server config from JSON: {name} ({url})")
+                config_file = MCPServersFile.model_validate(data)
+                servers.extend(config_file.servers)
+                for server in config_file.servers:
+                    logger.debug(f"Loaded MCP server config from JSON: {server.name} ({server.url})")
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse mcp_servers.json: {e}")
         except Exception as e:
@@ -132,10 +110,11 @@ async def initialize_mcp_servers(
                 headers["Authorization"] = f"Bearer {cfg.auth_token}"
 
             # Choose transport based on config
+            # MCP client returns (read, write, get_session_id)
             if cfg.transport == "streamable_http" or cfg.url.endswith("/http"):
-                read, write = await streamablehttp_client(cfg.url, headers=headers).__aenter__()
+                read, write, _ = await streamablehttp_client(cfg.url, headers=headers).__aenter__()
             else:
-                read, write = await sse_client(cfg.url, headers=headers).__aenter__()
+                read, write, _ = await sse_client(cfg.url, headers=headers).__aenter__()
 
             session = ClientSession(read, write)
             await session.initialize()

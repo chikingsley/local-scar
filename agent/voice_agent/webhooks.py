@@ -12,7 +12,6 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-import os
 import random
 
 import httpx
@@ -20,7 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .config import config
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -150,10 +149,10 @@ async def wake(req: WakeRequest) -> WakeResponse:
         "Yes? How can I help?",
         "What's up?",
     ]
-    greeting = random.choice(greetings)
+    _greeting = random.choice(greetings)
 
     # TODO: Inject greeting into pipeline
-    # await session.say(greeting)
+    # await session.say(_greeting)
 
     return WakeResponse(status="greeted", session_id=req.session_id)
 
@@ -205,7 +204,7 @@ async def get_voices() -> VoicesResponse:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{config.chatterbox_url}/v1/voices",
+                f"{settings.chatterbox_url}/v1/voices",
                 timeout=10.0,
             )
             response.raise_for_status()
@@ -223,7 +222,7 @@ async def get_models() -> ModelsResponse:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{config.ollama_host}/api/tags",
+                f"{settings.ollama_host}/api/tags",
                 timeout=10.0,
             )
             response.raise_for_status()

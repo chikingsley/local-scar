@@ -1,18 +1,28 @@
 """Pytest configuration and fixtures."""
 
-import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from voice_agent.config import get_settings
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    """Clear the settings cache before each test."""
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
 def mock_env(monkeypatch):
     """Set up test environment variables."""
-    monkeypatch.setenv("RIVA_URL", "localhost:50051")
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-api-key")
+    monkeypatch.setenv("NVIDIA_SERVER", "grpc.nvcf.nvidia.com:443")
     monkeypatch.setenv("CHATTERBOX_URL", "http://localhost:5000")
     monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
-    monkeypatch.setenv("OLLAMA_MODEL", "test-model")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
     monkeypatch.setenv("WEBRTC_PORT", "8765")
     monkeypatch.setenv("WEBHOOK_PORT", "8889")
 

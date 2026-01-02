@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from voice_agent.config import get_settings
 from voice_agent.integrations.mcp import MCPServerConfig, load_mcp_config
 from voice_agent.integrations.n8n import (
     clear_caches,
@@ -21,7 +22,10 @@ class TestMCPConfig:
     def test_load_mcp_config_empty(self, monkeypatch):
         """Test loading config with no env vars."""
         monkeypatch.delenv("N8N_MCP_URL", raising=False)
+        get_settings.cache_clear()
+
         configs = load_mcp_config()
+
         # Should return empty list when no config
         assert isinstance(configs, list)
 
@@ -29,6 +33,7 @@ class TestMCPConfig:
         """Test loading config with n8n env var."""
         monkeypatch.setenv("N8N_MCP_URL", "http://localhost:5678/mcp-server/http")
         monkeypatch.setenv("N8N_MCP_TOKEN", "test-token")
+        get_settings.cache_clear()
 
         configs = load_mcp_config()
 

@@ -1,64 +1,130 @@
-"""Configuration management."""
+"""Configuration management using Pydantic Settings."""
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
-from dotenv import load_dotenv
-
-# Load .env from project root
-_project_root = Path(__file__).parent.parent.parent
-load_dotenv(_project_root / ".env")
+from pydantic import Field, HttpUrl, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-@dataclass
-class Config:
-    """Application configuration from environment."""
+class Settings(BaseSettings):
+    """Application configuration from environment variables.
 
-    # STT (Riva/Parakeet)
-    riva_url: str = field(default_factory=lambda: os.getenv("RIVA_URL", "localhost:50051"))
-    riva_model: str = field(default_factory=lambda: os.getenv("RIVA_MODEL", "parakeet-tdt-0.6b"))
+    All settings can be overridden via environment variables.
+    Supports .env file loading.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # STT (NVIDIA Parakeet via NVCF)
+    nvidia_api_key: str = Field(
+        default="",
+        description="NVIDIA API key for STT (get from build.nvidia.com)",
+    )
+    nvidia_server: str = Field(
+        default="grpc.nvcf.nvidia.com:443",
+        description="NVIDIA STT gRPC server URL",
+    )
 
     # TTS (Chatterbox)
-    chatterbox_url: str = field(
-        default_factory=lambda: os.getenv("CHATTERBOX_URL", "http://localhost:5000")
+    chatterbox_url: Annotated[str, HttpUrl] = Field(
+        default="http://localhost:5000",
+        description="Chatterbox TTS server URL",
     )
-    tts_voice: str = field(default_factory=lambda: os.getenv("TTS_VOICE", "default"))
+    tts_voice: str = Field(
+        default="default",
+        description="TTS voice name or reference audio path",
+    )
+    tts_exaggeration: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Emotion intensity (0=monotone, 1=expressive)",
+    )
 
     # LLM (Ollama)
-    ollama_host: str = field(
-        default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    ollama_host: Annotated[str, HttpUrl] = Field(
+        default="http://localhost:11434",
+        description="Ollama API server URL",
     )
-    ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen3:8b"))
-    ollama_temperature: float = field(
-        default_factory=lambda: float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
+    ollama_model: str = Field(
+        default="qwen3:8b",
+        description="Ollama model name",
     )
-    ollama_num_ctx: int = field(
-        default_factory=lambda: int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+    ollama_temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+        description="LLM sampling temperature",
+    )
+    ollama_num_ctx: int = Field(
+        default=8192,
+        ge=1024,
+        description="LLM context window size",
     )
 
-    # n8n MCP
-    n8n_mcp_url: str | None = field(default_factory=lambda: os.getenv("N8N_MCP_URL"))
-    n8n_mcp_token: str | None = field(default_factory=lambda: os.getenv("N8N_MCP_TOKEN"))
+    # n8n MCP (optional)
+    n8n_mcp_url: str | None = Field(
+        default=None,
+        description="n8n MCP server URL",
+    )
+    n8n_mcp_token: str | None = Field(
+        default=None,
+        description="n8n MCP authentication token",
+    )
+    n8n_mcp_timeout: float = Field(
+        default=10.0,
+        ge=1.0,
+        description="n8n MCP request timeout in seconds",
+    )
 
-    # Webhook server
-    webhook_port: int = field(default_factory=lambda: int(os.getenv("WEBHOOK_PORT", "8889")))
-
-    # WebRTC
-    webrtc_port: int = field(default_factory=lambda: int(os.getenv("WEBRTC_PORT", "8765")))
+    # Server ports
+    webhook_port: int = Field(
+        default=8889,
+        ge=1,
+        le=65535,
+        description="Webhook API server port",
+    )
+    webrtc_port: int = Field(
+        default=8765,
+        ge=1,
+        le=65535,
+        description="WebRTC signaling server port",
+    )
 
     # Paths
-    prompts_dir: Path = field(
-        default_factory=lambda: Path(os.getenv("PROMPTS_DIR", str(_project_root / "prompts")))
+    prompts_dir: Path = Field(
+        default=Path("prompts"),
+        description="Directory containing prompt templates",
     )
 
+    @field_validator("prompts_dir", mode="before")
     @classmethod
-    def load(cls) -> Config:
-        """Load configuration from environment."""
-        return cls()
+    def resolve_prompts_dir(cls, v: str | Path) -> Path:
+        """Resolve prompts directory path."""
+        path = Path(v)
+        if not path.is_absolute():
+            # Relative to project root
+            path = Path(__file__).parent.parent / path
+        return path
 
 
-# Global config instance
-config = Config.load()
+@lru_cache
+def get_settings() -> Settings:
+    """Get cached settings instance.
+
+    Use this function to access settings throughout the application.
+    Settings are loaded once and cached for performance.
+    """
+    return Settings()
+
+
+# Convenience alias
+settings = get_settings()

@@ -1,22 +1,19 @@
 # Frontend Dockerfile
-FROM node:20-slim AS builder
+FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
-
 # Copy package files
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json bun.lockb* ./
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile || pnpm install
+RUN bun install --frozen-lockfile || bun install
 
 # Copy source
 COPY . .
 
 # Build
-RUN pnpm build
+RUN bun run build
 
 # Production stage
 FROM nginx:alpine

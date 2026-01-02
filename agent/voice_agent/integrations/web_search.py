@@ -14,7 +14,7 @@ from typing import Any
 
 import ollama
 
-from ..config import config
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class WebSearchTool:
     ):
         self.max_results = max_results
         self.timeout = timeout
-        self.model = model or config.ollama_model
+        self.model = model or settings.ollama_model
 
     async def search(self, query: str) -> str:
         """Search the web and return a summarized response.
@@ -71,7 +71,7 @@ class WebSearchTool:
 
             return await self._summarize_results(query, raw_results)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Web search timed out for query: {query}")
             return "The search took too long. Please try a simpler query."
         except Exception as e:
@@ -83,7 +83,7 @@ class WebSearchTool:
         from duckduckgo_search import DDGS
 
         def _search():
-            with DDGS(timeout=self.timeout) as ddgs:
+            with DDGS(timeout=int(self.timeout)) as ddgs:
                 return list(
                     ddgs.text(
                         query,

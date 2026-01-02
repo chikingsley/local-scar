@@ -12,9 +12,11 @@ Features:
 
 from __future__ import annotations
 
+from typing import AsyncGenerator  # noqa: UP035 - must match TTSService base class
+
 import aiohttp
 from pipecat.frames.frames import AudioRawFrame, ErrorFrame, Frame
-from pipecat.services.ai_services import TTSService
+from pipecat.services.tts_service import TTSService
 
 
 class ChatterboxTTSService(TTSService):
