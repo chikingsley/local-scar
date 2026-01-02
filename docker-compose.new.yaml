@@ -1,0 +1,147 @@
+# Voice Agent - Docker Compose Stack
+# ==================================
+#
+# Start all services:
+#   docker compose -f docker-compose.new.yaml up -d
+#
+# View logs:
+#   docker compose -f docker-compose.new.yaml logs -f agent
+#
+# Requirements:
+#   - Docker with NVIDIA Container Toolkit
+#   - Ollama running on host (or in separate container)
+#   - n8n with MCP enabled (optional)
+
+services:
+  # ==========================================================================
+  # Agent - Pipecat Voice Pipeline
+  # ==========================================================================
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: voice-agent
+    ports:
+      - "8765:8765"     # WebRTC signaling (SmallWebRTC)
+      - "8889:8889"     # Webhook API
+    environment:
+      - RIVA_URL=riva:50051
+      - CHATTERBOX_URL=http://chatterbox:5000
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - N8N_MCP_URL=${N8N_MCP_URL:-}
+      - N8N_MCP_TOKEN=${N8N_MCP_TOKEN:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - TTS_VOICE=${TTS_VOICE:-default}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./agent/prompts:/app/prompts:ro
+      - ./voices:/app/voices:ro  # Reference audio for voice cloning
+    networks:
+      - voice-network
+    depends_on:
+      riva:
+        condition: service_healthy
+      chatterbox:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Riva - NVIDIA STT (Parakeet)
+  # ==========================================================================
+  # Note: Riva requires model download on first run. See:
+  # https://docs.nvidia.com/deeplearning/riva/user-guide/docs/quick-start-guide.html
+  riva:
+    image: nvcr.io/nvidia/riva/riva-speech:2.18.0
+    container_name: voice-riva
+    ports:
+      - "50051:50051"   # gRPC
+      - "8001:8001"     # HTTP (Triton metrics)
+    environment:
+      - RIVA_SPEECH_API_KEY=${RIVA_API_KEY:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - riva-models:/data/models
+    networks:
+      - voice-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/v2/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Models take time to load
+
+  # ==========================================================================
+  # Chatterbox - TTS with Voice Cloning
+  # ==========================================================================
+  chatterbox:
+    image: ghcr.io/devnen/chatterbox-tts-server:latest
+    container_name: voice-chatterbox
+    ports:
+      - "5000:5000"
+    environment:
+      - DEVICE=cuda
+      - MODEL=turbo  # or "original" for higher quality
+      - DEFAULT_EXAGGERATION=0.5
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - chatterbox-cache:/app/cache
+      - ./voices:/app/voices:ro  # Reference audio for cloning
+    networks:
+      - voice-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # ==========================================================================
+  # Frontend - Vite + React
+  # ==========================================================================
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: voice-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_AGENT_URL=ws://localhost:8765
+      - VITE_WEBHOOK_URL=http://localhost:8889
+      - VITE_PORCUPINE_ACCESS_KEY=${PORCUPINE_ACCESS_KEY:-}
+    networks:
+      - voice-network
+    depends_on:
+      - agent
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  voice-network:
+    driver: bridge
+
+volumes:
+  riva-models:
+    name: voice-riva-models
+  chatterbox-cache:
+    name: voice-chatterbox-cache
