@@ -13,13 +13,18 @@ from __future__ import annotations
 
 import logging
 import random
+from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pipecat.frames.frames import TTSSpeakFrame
 from pydantic import BaseModel
 
 from .config import settings
+
+if TYPE_CHECKING:
+    from pipecat.pipeline.task import PipelineTask
 
 logger = logging.getLogger(__name__)
 
@@ -37,22 +42,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Session registry (populated by bot.py)
-_sessions: dict[str, tuple] = {}
+# Session registry: session_id -> PipelineTask
+_sessions: dict[str, PipelineTask] = {}
 
 
-def register_session(session_id: str, session, agent) -> None:
-    """Register an active session."""
-    _sessions[session_id] = (session, agent)
+def register_session(session_id: str, task: PipelineTask) -> None:
+    """Register an active session with its pipeline task."""
+    _sessions[session_id] = task
+    logger.info(f"Session registered: {session_id}")
 
 
 def unregister_session(session_id: str) -> None:
     """Unregister a session."""
     _sessions.pop(session_id, None)
+    logger.info(f"Session unregistered: {session_id}")
 
 
-def get_session(session_id: str):
-    """Get a session by ID."""
+def get_task(session_id: str) -> PipelineTask | None:
+    """Get a pipeline task by session ID."""
     return _sessions.get(session_id)
 
 
@@ -114,18 +121,17 @@ class ModelsResponse(BaseModel):
 @app.post("/announce", response_model=AnnounceResponse)
 async def announce(req: AnnounceRequest) -> AnnounceResponse:
     """Make the agent speak a message."""
-    result = get_session(req.session_id)
-    if not result:
+    task = get_task(req.session_id)
+    if not task:
         raise HTTPException(
             status_code=404,
             detail=f"No active session: {req.session_id}",
         )
 
-    session, _agent = result
     logger.info(f"Announcing to {req.session_id}: {req.message[:50]}...")
 
-    # TODO: Inject message into pipeline
-    # await session.say(req.message)
+    # Inject TTS frame into pipeline
+    await task.queue_frames([TTSSpeakFrame(text=req.message)])
 
     return AnnounceResponse(status="announced", session_id=req.session_id)
 
@@ -133,14 +139,13 @@ async def announce(req: AnnounceRequest) -> AnnounceResponse:
 @app.post("/wake", response_model=WakeResponse)
 async def wake(req: WakeRequest) -> WakeResponse:
     """Handle wake word detection."""
-    result = get_session(req.session_id)
-    if not result:
+    task = get_task(req.session_id)
+    if not task:
         raise HTTPException(
             status_code=404,
             detail=f"No active session: {req.session_id}",
         )
 
-    session, _agent = result
     logger.info(f"Wake word detected: {req.session_id}")
 
     greetings = [
@@ -149,10 +154,10 @@ async def wake(req: WakeRequest) -> WakeResponse:
         "Yes? How can I help?",
         "What's up?",
     ]
-    _greeting = random.choice(greetings)
+    greeting = random.choice(greetings)
 
-    # TODO: Inject greeting into pipeline
-    # await session.say(_greeting)
+    # Inject greeting into pipeline
+    await task.queue_frames([TTSSpeakFrame(text=greeting)])
 
     return WakeResponse(status="greeted", session_id=req.session_id)
 
@@ -160,27 +165,29 @@ async def wake(req: WakeRequest) -> WakeResponse:
 @app.post("/reload-tools", response_model=ReloadToolsResponse)
 async def reload_tools(req: ReloadToolsRequest) -> ReloadToolsResponse:
     """Refresh MCP tool cache."""
-    result = get_session(req.session_id)
-    if not result:
+    task = get_task(req.session_id)
+    if not task:
         raise HTTPException(
             status_code=404,
             detail=f"No active session: {req.session_id}",
         )
 
-    session, agent = result
     logger.info(f"Reloading tools for {req.session_id}")
 
     from .integrations import clear_caches
 
     clear_caches()
 
-    # TODO: Re-discover workflows
+    # Count tools (would need to re-discover, simplified for now)
     tool_count = 0
 
+    # Announce if requested
     if req.message:
-        pass  # TODO: await session.say(req.message)
+        await task.queue_frames([TTSSpeakFrame(text=req.message)])
     elif req.tool_name:
-        pass  # TODO: await session.say(f"A new tool called '{req.tool_name}' is now available.")
+        await task.queue_frames([
+            TTSSpeakFrame(text=f"A new tool called {req.tool_name} is now available.")
+        ])
 
     return ReloadToolsResponse(
         status="reloaded",

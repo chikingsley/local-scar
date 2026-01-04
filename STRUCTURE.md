@@ -264,19 +264,20 @@ export function usePipecat() {
 ## Migration Checklist
 
 ### Phase 1: Core Pipeline
-- [ ] Set up Riva container with Parakeet
-- [ ] Set up Chatterbox container
-- [ ] Create Pipecat agent with SmallWebRTC
-- [ ] Port n8n integration
-- [ ] Port webhook server
+- [x] Set up Parakeet STT (via onnx-asr, local ONNX)
+- [x] Set up Chatterbox container
+- [x] Create Pipecat agent with SmallWebRTC
+- [x] Wire MCP/n8n tools into LLM pipeline
+- [x] Port webhook server (structure done, injection TODO)
 
 ### Phase 2: Frontend
-- [ ] Create Vite + React project
-- [ ] Implement Pipecat client connection
-- [ ] Port UI components from Next.js
+- [x] Create Vite + React project
+- [x] Implement Pipecat client connection (@pipecat-ai/client-js)
+- [x] Port UI components (SessionView, ChatTranscript)
 - [ ] Port Picovoice wake word
 
 ### Phase 3: Polish
+- [ ] Implement webhook injection (announce/wake/reload)
 - [ ] Port settings modal
 - [ ] Port tool status indicator
 - [ ] Add Tailscale configuration

@@ -34,8 +34,8 @@ dependencies = [
     "aiortc>=1.9.0",
     "websockets>=12.0",
 
-    # NVIDIA STT (Parakeet via NVCF)
-    "nvidia-riva-client>=2.17.0",
+    # STT (Parakeet via onnx-asr - local)
+    "onnx-asr[gpu,hub]>=0.9.0",
 
     # MCP client
     "mcp>=1.0.0",

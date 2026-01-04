@@ -7,7 +7,7 @@ Migration from CAAL (LiveKit-based) to Pipecat-based local voice assistant.
 | Component | CAAL (Before) | New (After) | Reason |
 |-----------|---------------|-------------|--------|
 | Framework | LiveKit Agents | Pipecat | More modular, better local support, no vendor lock-in |
-| STT | Speaches (Faster-Whisper) | NVIDIA Riva (Parakeet) | 50x faster, 6% WER vs ~10%, true streaming |
+| STT | Speaches (Faster-Whisper) | Parakeet TDT v3 (onnx-asr) | 50x faster, 6% WER vs ~10%, local ONNX |
 | TTS | Kokoro | Chatterbox (Resemble AI) | SOTA quality, zero-shot voice cloning, emotion control, 23 languages |
 | Transport | LiveKit Server | SmallWebRTCTransport | Self-contained, no external deps, p2p |
 | Mobile | Flutter | React Native | Preference, better ecosystem |
@@ -43,16 +43,22 @@ Migration from CAAL (LiveKit-based) to Pipecat-based local voice assistant.
 - Video/image generation
 - Speech-to-speech
 
-## STT Decision: Parakeet vs Canary
+## STT Decision: Parakeet via onnx-asr
 
-| Aspect | Parakeet | Canary |
-|--------|----------|--------|
-| Streaming | Yes | No (offline only) |
-| Translation | No | Yes (25 languages) |
-| Speed | 50x faster than Whisper | 10x faster than Whisper |
-| Use Case | Real-time voice | Batch transcription + translation |
+| Aspect | Parakeet TDT v3 | Whisper |
+|--------|-----------------|---------|
+| Speed | ~50ms per segment | ~500ms+ |
+| WER | 6% | ~10% |
+| Streaming | Batch (after VAD) | Batch |
+| Dependencies | onnx-asr, onnxruntime | faster-whisper |
 
-**Decision:** Parakeet - we need streaming for real-time voice, don't need translation.
+**Decision:** Parakeet TDT v3 via `onnx-asr` package.
+- Downloads from HuggingFace automatically
+- Runs locally with ONNX Runtime (GPU or CPU)
+- VAD segments audio, Parakeet transcribes each segment
+- No external API or NGC account needed
+
+Alternative considered: NVIDIA Riva NIM container (requires NGC account, heavy setup).
 
 ## TTS Decision: Chatterbox
 

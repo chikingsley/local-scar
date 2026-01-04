@@ -1,4 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
+import { PipecatClient } from "@pipecat-ai/client-js";
+import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
+import { useSettings } from "../components/SettingsModal";
 
 export type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
@@ -12,122 +15,151 @@ export function usePipecat() {
   const [state, setState] = useState<ConnectionState>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [activeTool, setActiveTool] = useState<string | null>(null);
 
-  // WebRTC connection refs
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const clientRef = useRef<PipecatClient | null>(null);
+  const settings = useSettings();
 
-  const agentUrl = import.meta.env.VITE_AGENT_URL || "ws://localhost:8765";
+  const agentUrl = settings.agentUrl || "http://localhost:8765";
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (clientRef.current) {
+        clientRef.current.disconnect();
+        clientRef.current = null;
+      }
+    };
+  }, []);
 
   const connect = useCallback(async () => {
+    if (clientRef.current) {
+      console.warn("Already connected or connecting");
+      return;
+    }
+
     setState("connecting");
     setError(null);
+    setTranscript([]);
 
     try {
-      // Create WebSocket connection for signaling
-      const ws = new WebSocket(agentUrl);
-      wsRef.current = ws;
+      // Create transport with SmallWebRTC
+      const transport = new SmallWebRTCTransport();
 
-      ws.onopen = async () => {
-        console.log("WebSocket connected");
+      // Create Pipecat client
+      const client = new PipecatClient({
+        transport,
+        enableMic: true,
+        enableCam: false,
+        callbacks: {
+          // Connection events
+          onConnected: () => {
+            console.log("Pipecat connected");
+            setState("connected");
+          },
+          onDisconnected: () => {
+            console.log("Pipecat disconnected");
+            setState("idle");
+            clientRef.current = null;
+          },
+          onError: (err) => {
+            console.error("Pipecat error:", err);
+            setError(err.message || "Connection error");
+            setState("error");
+          },
 
-        // Create peer connection
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-        });
-        pcRef.current = pc;
+          // Transcript events
+          onUserTranscript: (data) => {
+            if (data.text && data.final) {
+              setTranscript((prev) => [
+                ...prev,
+                {
+                  role: "user",
+                  content: data.text,
+                  timestamp: new Date(),
+                },
+              ]);
+            }
+          },
+          onBotTranscript: (data) => {
+            if (data.text) {
+              setTranscript((prev) => {
+                // Update last assistant entry if it exists, otherwise add new
+                const lastEntry = prev[prev.length - 1];
+                if (lastEntry?.role === "assistant" && !data.final) {
+                  // Streaming update - replace last entry
+                  return [
+                    ...prev.slice(0, -1),
+                    {
+                      ...lastEntry,
+                      content: data.text,
+                    },
+                  ];
+                }
+                // New entry
+                return [
+                  ...prev,
+                  {
+                    role: "assistant",
+                    content: data.text,
+                    timestamp: new Date(),
+                  },
+                ];
+              });
+            }
+          },
 
-        // Add audio track
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: false,
-        });
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+          // Tool call events
+          onLLMFunctionCall: (data) => {
+            console.log("Tool call started:", data.function_name);
+            setActiveTool(data.function_name);
+          },
+          onLLMFunctionCallResult: () => {
+            console.log("Tool call completed");
+            setActiveTool(null);
+          },
+        },
+      });
 
-        // Handle incoming audio
-        pc.ontrack = (event) => {
-          const audio = new Audio();
-          audio.srcObject = event.streams[0];
-          audio.play();
-        };
+      clientRef.current = client;
 
-        // Handle ICE candidates
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            ws.send(
-              JSON.stringify({
-                type: "ice-candidate",
-                candidate: event.candidate,
-              })
-            );
-          }
-        };
-
-        // Create and send offer
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
-      };
-
-      ws.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === "answer" && pcRef.current) {
-          await pcRef.current.setRemoteDescription({
-            type: "answer",
-            sdp: data.sdp,
-          });
-          setState("connected");
-        } else if (data.type === "ice-candidate" && pcRef.current) {
-          await pcRef.current.addIceCandidate(data.candidate);
-        } else if (data.type === "transcript") {
-          setTranscript((prev) => [
-            ...prev,
-            {
-              role: data.role,
-              content: data.content,
-              timestamp: new Date(),
-            },
-          ]);
-        }
-      };
-
-      ws.onerror = (event) => {
-        console.error("WebSocket error:", event);
-        setError("Connection failed");
-        setState("error");
-      };
-
-      ws.onclose = () => {
-        console.log("WebSocket closed");
-        if (state === "connected") {
-          setState("idle");
-        }
-      };
+      // Connect to the agent
+      await client.connect({
+        webrtcUrl: `${agentUrl}/offer`,
+      });
     } catch (err) {
       console.error("Connection error:", err);
       setError(err instanceof Error ? err.message : "Connection failed");
       setState("error");
+      clientRef.current = null;
     }
-  }, [agentUrl, state]);
+  }, [agentUrl]);
 
-  const disconnect = useCallback(() => {
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+  const disconnect = useCallback(async () => {
+    if (clientRef.current) {
+      await clientRef.current.disconnect();
+      clientRef.current = null;
     }
     setState("idle");
   }, []);
+
+  const toggleMute = useCallback(() => {
+    if (clientRef.current) {
+      const newMuted = !isMuted;
+      clientRef.current.enableMic(!newMuted);
+      setIsMuted(newMuted);
+    }
+  }, [isMuted]);
 
   return {
     state,
     transcript,
     error,
+    isMuted,
+    activeTool,
     connect,
     disconnect,
+    toggleMute,
   };
 }

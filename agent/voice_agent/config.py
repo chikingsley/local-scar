@@ -23,14 +23,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # STT (NVIDIA Parakeet via NVCF)
-    nvidia_api_key: str = Field(
-        default="",
-        description="NVIDIA API key for STT (get from build.nvidia.com)",
+    # STT (Parakeet via onnx-asr - local)
+    stt_model: str = Field(
+        default="nemo-parakeet-tdt-0.6b-v3",
+        description="STT model name (onnx-asr model ID)",
     )
-    nvidia_server: str = Field(
-        default="grpc.nvcf.nvidia.com:443",
-        description="NVIDIA STT gRPC server URL",
+    stt_device: str = Field(
+        default="cuda",
+        description="STT inference device (cuda, cpu, coreml)",
+    )
+    stt_quantization: str | None = Field(
+        default=None,
+        description="STT model quantization (None for float32, 'int8' for quantized)",
     )
 
     # TTS (Chatterbox)

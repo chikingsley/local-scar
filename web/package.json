@@ -15,7 +15,7 @@
   "dependencies": {
     "@pipecat-ai/client-js": "^0.3.0",
     "@pipecat-ai/small-webrtc-transport": "^0.1.0",
-    "@picovoice/porcupine-web": "^3.0.0",
+    "@picovoice/porcupine-react": "^3.0.0",
     "@picovoice/web-voice-processor": "^4.0.0",
     "clsx": "^2.1.0",
     "react": "^18.3.0",

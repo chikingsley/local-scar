@@ -5,11 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from voice_agent.config import get_settings
-from voice_agent.integrations.mcp import MCPServerConfig, load_mcp_config
+from voice_agent.integrations.mcp import load_mcp_config
 from voice_agent.integrations.n8n import (
     clear_caches,
     discover_n8n_workflows,
-    execute_n8n_workflow,
     extract_webhook_description,
     parse_mcp_result,
     sanitize_tool_name,

@@ -1,6 +1,5 @@
 """Tests for configuration module."""
 
-import pytest
 
 from voice_agent.config import Settings, get_settings
 
@@ -9,7 +8,8 @@ def test_settings_defaults():
     """Test that settings loads with defaults."""
     settings = Settings()
 
-    assert settings.nvidia_server == "grpc.nvcf.nvidia.com:443"
+    assert settings.stt_model == "nemo-parakeet-tdt-0.6b-v3"
+    assert settings.stt_device == "cuda"
     assert settings.chatterbox_url == "http://localhost:5000"
     assert settings.ollama_host == "http://localhost:11434"
     assert settings.ollama_model == "qwen3:8b"
@@ -17,15 +17,15 @@ def test_settings_defaults():
 
 def test_settings_from_env(monkeypatch):
     """Test that settings reads from environment."""
-    monkeypatch.setenv("NVIDIA_SERVER", "custom-nvidia:9999")
-    monkeypatch.setenv("OLLAMA_MODEL", "custom-model")
+    monkeypatch.setenv("STT_MODEL", "custom-model")
+    monkeypatch.setenv("OLLAMA_MODEL", "custom-llm")
 
     # Clear the lru_cache to pick up new env vars
     get_settings.cache_clear()
     settings = Settings()
 
-    assert settings.nvidia_server == "custom-nvidia:9999"
-    assert settings.ollama_model == "custom-model"
+    assert settings.stt_model == "custom-model"
+    assert settings.ollama_model == "custom-llm"
 
 
 def test_settings_optional_n8n():

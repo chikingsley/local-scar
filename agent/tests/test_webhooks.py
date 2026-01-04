@@ -1,5 +1,7 @@
 """Tests for webhook API."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -10,6 +12,14 @@ from voice_agent.webhooks import app, register_session, unregister_session
 def client():
     """Create test client."""
     return TestClient(app)
+
+
+@pytest.fixture
+def mock_task():
+    """Create a mock PipelineTask."""
+    task = MagicMock()
+    task.queue_frames = AsyncMock()
+    return task
 
 
 class TestHealthEndpoint:
@@ -35,10 +45,10 @@ class TestAnnounceEndpoint:
         )
         assert response.status_code == 404
 
-    def test_announce_with_session(self, client):
+    def test_announce_with_session(self, client, mock_task):
         """Test announce succeeds with active session."""
-        # Register a mock session
-        register_session("test-session", object(), object())
+        # Register a mock task
+        register_session("test-session", mock_task)
 
         try:
             response = client.post(
@@ -47,6 +57,7 @@ class TestAnnounceEndpoint:
             )
             assert response.status_code == 200
             assert response.json()["status"] == "announced"
+            mock_task.queue_frames.assert_called_once()
         finally:
             unregister_session("test-session")
 
