@@ -22,13 +22,15 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
-from pipecat.services.cartesia.tts import CartesiaTTSService
-from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.ollama.llm import OLLamaLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 
 load_dotenv(override=True)
+
+# Service mode: "cloud" or "local"
+USE_LOCAL_STT = os.getenv("USE_LOCAL_STT", "false").lower() == "true"
+USE_LOCAL_TTS = os.getenv("USE_LOCAL_TTS", "false").lower() == "true"
 
 
 async def fetch_weather_from_api(params: FunctionCallParams):
@@ -52,16 +54,43 @@ transport_params = {
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
-    logger.info(f"Starting bot")
+    logger.info(f"Starting bot (local_stt={USE_LOCAL_STT}, local_tts={USE_LOCAL_TTS})")
 
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+    # STT: Local Parakeet or Cloud Deepgram
+    if USE_LOCAL_STT:
+        from services.parakeet import ParakeetSTTService
 
-    tts = CartesiaTTSService(
-        api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",  # British Reading Lady
-    )
+        stt = ParakeetSTTService(
+            model=os.getenv("STT_MODEL", "nemo-parakeet-tdt-0.6b-v3"),
+            device=os.getenv("STT_DEVICE", "cpu"),
+        )
+        logger.info("Using local Parakeet STT")
+    else:
+        from pipecat.services.deepgram.stt import DeepgramSTTService
 
-    llm = OLLamaLLMService(model="qwen3:4b")
+        stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+        logger.info("Using cloud Deepgram STT")
+
+    # TTS: Local Chatterbox or Cloud Cartesia
+    if USE_LOCAL_TTS:
+        from services.chatterbox import ChatterboxTTSService
+
+        tts = ChatterboxTTSService(
+            base_url=os.getenv("CHATTERBOX_URL", "http://localhost:5000"),
+            voice=os.getenv("TTS_VOICE", "default"),
+            exaggeration=float(os.getenv("TTS_EXAGGERATION", "0.5")),
+        )
+        logger.info("Using local Chatterbox TTS")
+    else:
+        from pipecat.services.cartesia.tts import CartesiaTTSService
+
+        tts = CartesiaTTSService(
+            api_key=os.getenv("CARTESIA_API_KEY"),
+            voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",  # British Reading Lady
+        )
+        logger.info("Using cloud Cartesia TTS")
+
+    llm = OLLamaLLMService(model=os.getenv("OLLAMA_MODEL", "qwen3:4b"))
 
     # You can also register a function_name of None to get all functions
     # sent to the same callback with an additional function_name parameter.
