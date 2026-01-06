@@ -68,6 +68,13 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Node
+node_modules/
+bun.lock
+
+# Pipecat prebuilt (external repo - use pipecat-test/ for our mods)
+small-webrtc-prebuilt/
+
 # Flutter/Dart build artifacts
 mobile/.dart_tool/
 mobile/.flutter-plugins-dependencies
