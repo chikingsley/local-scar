@@ -44,8 +44,14 @@ export function usePipecat() {
     setTranscript([]);
 
     try {
-      // Create transport with SmallWebRTC
-      const transport = new SmallWebRTCTransport();
+      // Create transport with SmallWebRTC and ICE servers for NAT traversal
+      const transport = new SmallWebRTCTransport({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ],
+        waitForICEGathering: true,
+      });
 
       // Create Pipecat client
       const client = new PipecatClient({
@@ -65,7 +71,7 @@ export function usePipecat() {
           },
           onError: (err) => {
             console.error("Pipecat error:", err);
-            setError(err.message || "Connection error");
+            setError("Connection error");
             setState("error");
           },
 
@@ -87,7 +93,7 @@ export function usePipecat() {
               setTranscript((prev) => {
                 // Update last assistant entry if it exists, otherwise add new
                 const lastEntry = prev[prev.length - 1];
-                if (lastEntry?.role === "assistant" && !data.final) {
+                if (lastEntry?.role === "assistant") {
                   // Streaming update - replace last entry
                   return [
                     ...prev.slice(0, -1),
@@ -112,12 +118,10 @@ export function usePipecat() {
 
           // Tool call events
           onLLMFunctionCall: (data) => {
-            console.log("Tool call started:", data.function_name);
+            console.log("Tool call:", data.function_name);
             setActiveTool(data.function_name);
-          },
-          onLLMFunctionCallResult: () => {
-            console.log("Tool call completed");
-            setActiveTool(null);
+            // Clear after a short delay since there's no result callback
+            setTimeout(() => setActiveTool(null), 2000);
           },
         },
       });

@@ -13,8 +13,8 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "@pipecat-ai/client-js": "^0.3.0",
-    "@pipecat-ai/small-webrtc-transport": "^0.1.0",
+    "@pipecat-ai/client-js": "^1.5.0",
+    "@pipecat-ai/small-webrtc-transport": "^1.8.0",
     "@picovoice/porcupine-react": "^3.0.0",
     "@picovoice/web-voice-processor": "^4.0.0",
     "clsx": "^2.1.0",

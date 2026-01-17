@@ -31,6 +31,7 @@ from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.ollama.llm import OLLamaLLMService
 from pipecat.transports.base_transport import TransportParams
+from aiortc import RTCIceServer
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.request_handler import (
     SmallWebRTCRequest,
@@ -72,8 +73,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# WebRTC request handler
-request_handler = SmallWebRTCRequestHandler()
+# ICE servers for WebRTC NAT traversal
+ICE_SERVERS = [
+    RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
+    RTCIceServer(urls=["stun:stun1.l.google.com:19302"]),
+    RTCIceServer(urls=["stun:stun2.l.google.com:19302"]),
+    RTCIceServer(urls=["stun:stun3.l.google.com:19302"]),
+    RTCIceServer(urls=["stun:stun4.l.google.com:19302"]),
+]
+
+# WebRTC request handler with ICE servers
+request_handler = SmallWebRTCRequestHandler(ice_servers=ICE_SERVERS)
 
 # Global state for MCP sessions and workflow mappings
 _mcp_sessions: dict[str, Any] = {}

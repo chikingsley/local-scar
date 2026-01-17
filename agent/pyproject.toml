@@ -28,14 +28,14 @@ classifiers = [
 ]
 dependencies = [
     # Pipecat core + services
-    "pipecat-ai[silero]>=0.0.95",
+    "pipecat-ai[silero,webrtc]>=0.0.95",
 
     # WebRTC transport (SmallWebRTC)
     "aiortc>=1.9.0",
     "websockets>=12.0",
 
     # STT (Parakeet via onnx-asr - local)
-    "onnx-asr[gpu,hub]>=0.9.0",
+    "onnx-asr[hub]>=0.9.0",
 
     # MCP client
     "mcp>=1.0.0",

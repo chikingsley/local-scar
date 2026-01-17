@@ -23,41 +23,25 @@ services:
       context: ./agent
       dockerfile: Dockerfile
     container_name: voice-agent
-    ports:
-      - "8765:8765"     # WebRTC signaling (SmallWebRTC)
-      - "8889:8889"     # Webhook API
+    network_mode: host
     environment:
       # STT (Parakeet via onnx-asr - runs in container)
       - STT_MODEL=${STT_MODEL:-nemo-parakeet-tdt-0.6b-v3}
-      - STT_DEVICE=${STT_DEVICE:-cuda}
+      - STT_DEVICE=${STT_DEVICE:-cpu}
       - STT_QUANTIZATION=${STT_QUANTIZATION:-}
-      # TTS (Chatterbox container)
-      - CHATTERBOX_URL=http://chatterbox:5000
+      # TTS (Chatterbox container - use localhost since agent is on host network)
+      - CHATTERBOX_URL=http://localhost:5000
       - TTS_VOICE=${TTS_VOICE:-default}
-      # LLM (Ollama on host)
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      # LLM (Ollama on host - use localhost since agent is on host network)
+      - OLLAMA_HOST=http://localhost:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
       # MCP/n8n (optional)
       - N8N_MCP_URL=${N8N_MCP_URL:-}
       - N8N_MCP_TOKEN=${N8N_MCP_TOKEN:-}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./agent/prompts:/app/prompts:ro
       - ./voices:/app/voices:ro  # Reference audio for voice cloning
       - parakeet-cache:/root/.cache/huggingface  # Cache downloaded models
-    networks:
-      - voice-network
-    depends_on:
-      chatterbox:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
@@ -71,20 +55,14 @@ services:
   # ==========================================================================
   chatterbox:
     image: ghcr.io/devnen/chatterbox-tts-server:latest
+    platform: linux/amd64
     container_name: voice-chatterbox
     ports:
-      - "5000:5000"
+      - "5000:8004"
     environment:
-      - DEVICE=cuda
+      - DEVICE=cpu
       - MODEL=turbo  # or "original" for higher quality
       - DEFAULT_EXAGGERATION=0.5
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     volumes:
       - chatterbox-cache:/app/cache
       - ./voices:/app/voices:ro  # Reference audio for cloning
@@ -92,11 +70,11 @@ services:
       - voice-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/')"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   # ==========================================================================
   # Frontend - Vite + React
